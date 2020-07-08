@@ -1,0 +1,105 @@
+################# SMETERLCC INTEL RFP TEST ########################
+DROP TABLE IF exists #arPreviousMonth
+DROP TABLE IF exists #arPreviousMonthI0
+DROP TABLE IF exists #ar2PreviousMonth
+DROP TABLE IF exists #ar2PreviousMonthI0
+DROP TABLE IF exists #ar2PreviousMonthC
+DROP TABLE IF exists #ar2PreviousMonthI0C
+DROP TABLE IF exists #ar2PreviousMonthH
+DROP TABLE IF exists #ar2PreviousMonthI0H
+DROP TABLE IF exists #ar2PreviousMonthT
+DROP TABLE IF exists #ar2PreviousMonthI0T
+
+DECLARE @MonthMinus1 date = DATEADD(MONTH,-1,GETDATE())
+DECLARE @MonthMinus2 date = DATEADD(MONTH,-2,GETDATE())
+DECLARE @PreviousMonth nvarchar(7) = CONCAT(CAST(FORMAT(@MonthMinus1, 'yyyyMM') AS nvarchar),'%')
+DECLARE @2PreviousMonth nvarchar(7) = CONCAT(CAST(FORMAT(@MonthMinus2, 'yyyyMM') AS nvarchar),'%')
+
+SELECT COUNT(sttl.DeviceId) [Previous Month Total Count]
+, dsu.PartyName
+INTO #arPreviousMonth
+FROM SERV.SAT.SRTransactionLatest sttl WITH (NOLOCK)
+LEFT JOIN SERV.inv.ServiceUser dsu WITH (NOLOCK) ON dsu.ServiceUserID = sttl.ServiceUserID
+WHERE sttl.SGeneratedDate LIKE @PreviousMonth AND sttl.SMETSReferenceVariant IN ('SMETS1' ,'SMETS2')
+GROUP BY dsu.PartyName
+
+SELECT COUNT(sttl.DeviceId) [Previous Month I0 Count]
+, dsu.PartyName
+INTO #arPreviousMonthI0
+FROM SERV.SAT.SRTransactionLatest sttl WITH (NOLOCK)
+LEFT JOIN SERV.inv.ServiceUser dsu WITH (NOLOCK) ON dsu.ServiceUserID = sttl.ServiceUserID
+WHERE sttl.SGeneratedDate LIKE @PreviousMonth AND sttl.SMETSReferenceVariant IN ('SMETS1' ,'SMETS2') AND sttl.ResponseCode IN ('I0' ,'I99')
+GROUP BY dsu.PartyName
+
+SELECT COUNT(sttl.DeviceId) [2 Previous Month Total Count]
+, dsu.PartyName
+INTO #ar2PreviousMonthC
+FROM SERV.SAT.SRTransactionLatest sttl WITH (NOLOCK)
+LEFT JOIN SERV.inv.ServiceUser dsu WITH (NOLOCK) ON dsu.ServiceUserID = sttl.ServiceUserID
+WHERE sttl.SGeneratedDate LIKE @2PreviousMonth AND sttl.SMETSReferenceVariant IN ('SMETS1' ,'SMETS2')
+GROUP BY dsu.PartyName
+
+SELECT COUNT(sttl.DeviceId) [2 Previous Month I0 Count]
+, dsu.PartyName
+INTO #ar2PreviousMonthI0C
+FROM SERV.SAT.SRTransactionLatest sttl WITH (NOLOCK)
+LEFT JOIN SERV.inv.ServiceUser dsu WITH (NOLOCK) ON dsu.ServiceUserID = sttl.ServiceUserID
+WHERE sttl.SGeneratedDate LIKE @2PreviousMonth AND sttl.SMETSReferenceVariant IN ('SMETS1' ,'SMETS2') AND sttl.ResponseCode IN ('I0' ,'I99')
+GROUP BY dsu.PartyName
+
+SELECT COUNT(sttlh.DeviceId) [2 Previous Month Total Count]
+, dsu.PartyName
+INTO #ar2PreviousMonthH
+FROM SERV_History.SAT.SRTransactionLatestHistory sttlh WITH (NOLOCK)
+LEFT JOIN SERV.inv.ServiceUser dsu WITH (NOLOCK) ON dsu.ServiceUserID = sttlh.ServiceUserID
+WHERE sttlh.SGeneratedDate LIKE @2PreviousMonth AND sttlh.SMETSReferenceVariant IN ('SMETS1' ,'SMETS2')
+GROUP BY dsu.PartyName
+
+SELECT COUNT(sttlh.DeviceId) [2 Previous Month I0 Count]
+, dsu.PartyName
+INTO #ar2PreviousMonthI0H
+FROM SERV_History.SAT.SRTransactionLatestHistory sttlh WITH (NOLOCK)
+LEFT JOIN SERV.inv.ServiceUser dsu WITH (NOLOCK) ON dsu.ServiceUserID = sttlh.ServiceUserID
+WHERE sttlh.SGeneratedDate LIKE @2PreviousMonth AND sttlh.SMETSReferenceVariant IN ('SMETS1' ,'SMETS2') AND sttlh.ResponseCode IN ('I0' ,'I99')
+GROUP BY dsu.PartyName
+
+SELECT [2pmj].PartyName
+, SUM([2pmj].[2 Previous Month Total Count] + [2pmhj].[2 Previous Month Total Count]) [2 Previous Month Total Count]
+INTO #ar2PreviousMonthT
+FROM #ar2PreviousMonthC [2pmj] WITH (NOLOCK)
+LEFT JOIN #ar2PreviousMonthH [2pmhj] WITH (NOLOCK) ON [2pmj].PartyName = [2pmhj].PartyName
+GROUP BY [2pmj].PartyName
+
+SELECT[2pmi0j].PartyName
+, SUM([2pmi0j].[2 Previous Month I0 Count] + [2pmhi0j].[2 Previous Month I0 Count]) [2 Previous Month I0 Count]
+INTO #ar2PreviousMonthI0T
+FROM #ar2PreviousMonthI0C [2pmi0j] WITH (NOLOCK)
+LEFT JOIN #ar2PreviousMonthI0H [2pmhi0j] WITH (NOLOCK) ON [2pmi0j].PartyName = [2pmhi0j].PartyName
+GROUP BY [2pmi0j].PartyName
+
+SELECT pm.PartyName
+, pm.[Previous Month Total Count]
+, pmI0.[Previous Month I0 Count]
+, [2pm].[2 Previous Month Total Count] AS [2 Month Total Count]
+, [2pmI0].[2 Previous Month I0 Count] AS [2 Month I0 Count]
+, (CAST(pmI0.[Previous Month I0 Count] AS decimal) / CAST(pm.[Previous Month Total Count] AS decimal) *100) AS [Percent Last Month]
+, (CAST([2pmI0].[2 Previous Month I0 Count] AS decimal) / CAST([2pm].[2 Previous Month Total Count] AS decimal) *100) AS [Percent 2 Month]
+FROM #arPreviousMonth pm WITH (NOLOCK)
+LEFT JOIN #arPreviousMonthI0 pmI0 WITH (NOLOCK) ON pm.PartyName = pmI0.PartyName
+LEFT JOIN #ar2PreviousMonthT [2pm] WITH (NOLOCK) ON pm.PartyName = [2pm].PartyName
+LEFT JOIN #ar2PreviousMonthI0T [2pmI0] WITH (NOLOCK) ON pm.PartyName =[2pmI0].PartyName
+WHERE pmI0.[Previous Month I0 Count] IS NOT NULL AND [2pmI0].[2 Previous Month I0 Count] IS NOT NULL
+
+ORDER BY pm.[Previous Month Total Count] DESC
+
+DROP TABLE IF exists #arPreviousMonth
+DROP TABLE IF exists #arPreviousMonthI0
+DROP TABLE IF exists #ar2PreviousMonth
+DROP TABLE IF exists #ar2PreviousMonthI0
+DROP TABLE IF exists #ar2PreviousMonthC
+DROP TABLE IF exists #ar2PreviousMonthI0C
+DROP TABLE IF exists #ar2PreviousMonthH
+DROP TABLE IF exists #ar2PreviousMonthI0H
+DROP TABLE IF exists #ar2PreviousMonthT
+DROP TABLE IF exists #ar2PreviousMonthI0T
+################# SMETERLCC INTEL RFP TEST ########################
